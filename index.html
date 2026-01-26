@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MySQL Slow Log Analyzer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>MySQL Slow Log Analyzer</h1>
+        <p>
+          Analyze MySQL/MariaDB slow query logs
+        </p>
+      </div>
+
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-text">
+          <strong>Click here or drag the mysql-slow.log file</strong>
+        </div>
+        <input
+          type="file"
+          id="fileInput"
+          class="file-input"
+          accept=".log,.txt"
+        />
+        <div class="file-info" id="fileInfo"></div>
+      </div>
+
+      <div class="processing-options hidden" id="processingOptions">
+        <div class="option-card" data-mode="full">
+          <div class="option-title">Full Analysis</div>
+          <div class="option-desc">Processes all queries (slower)</div>
+        </div>
+        <div class="option-card selected" data-mode="recent">
+          <div class="option-title">Last 10k</div>
+          <div class="option-desc">Only recent queries (fast)</div>
+        </div>
+        <div class="option-card" data-mode="sample">
+          <div class="option-title">Sampling</div>
+          <div class="option-desc">1 in 10 queries (very fast)</div>
+        </div>
+
+        <div class="filter-config">
+          <div class="filter-config-row">
+            <span class="filter-config-label">Minimum execution time:</span>
+            <input
+              type="number"
+              id="minExecutionTime"
+              class="filter-config-input"
+              value="0"
+              min="0"
+              step="1"
+              placeholder="0"
+            />
+            <span class="filter-config-unit">ms</span>
+          </div>
+          <div class="preset-buttons">
+            <button type="button" class="preset-btn" onclick="setMinTime(0)">
+              No filter
+            </button>
+            <button
+              type="button"
+              class="preset-btn preset-btn-blue"
+              onclick="setMinTime(50)"
+            >
+              50ms
+            </button>
+            <button
+              type="button"
+              class="preset-btn preset-btn-green"
+              onclick="setMinTime(100)"
+            >
+              100ms
+            </button>
+            <button
+              type="button"
+              class="preset-btn preset-btn-red"
+              onclick="setMinTime(500)"
+            >
+              500ms
+            </button>
+            <button
+              type="button"
+              class="preset-btn preset-btn-pink"
+              onclick="setMinTime(1000)"
+            >
+              1s
+            </button>
+          </div>
+          <div class="filter-config-desc">
+            Skip queries faster than this threshold
+          </div>
+        </div>
+
+        <div class="start-processing">
+          <button
+            id="startProcessingBtn"
+            class="start-btn"
+            onclick="processFile()"
+          >
+            Start Processing
+          </button>
+        </div>
+      </div>
+
+      <div class="progress-container" id="progressContainer">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">
+          Loading...
+        </div>
+      </div>
+
+      <div class="results-container" id="resultsContainer">
+        <div class="stats-grid" id="statsGrid"></div>
+
+        <div class="queries-section">
+          <div class="section-header">
+            <span>Analyzed Queries</span>
+            <div class="controls">
+              <button class="btn" onclick="toggleAllQueries(true)">
+                Expand All
+              </button>
+              <button class="btn" onclick="toggleAllQueries(false)">
+                Collapse All
+              </button>
+            </div>
+          </div>
+
+          <div class="filters">
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Search for text in SQL queries
+                </div>
+                Search SQL
+              </label>
+              <input
+                type="text"
+                class="filter-input"
+                id="searchFilter"
+                placeholder="Ex: SELECT, UPDATE, table_name"
+              />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Filter by database schema
+                </div>
+                Schema
+              </label>
+              <select class="filter-input" id="schemaFilter">
+                <option value="">All Schemas</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Filter by MySQL user
+                </div>
+                User
+              </label>
+              <select class="filter-input" id="userFilter">
+                <option value="">All Users</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Query severity (based on execution time, lock time, or row divergence)
+                </div>
+                Severity
+              </label>
+              <select class="filter-input" id="severityFilter">
+                <option value="">All</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Filter queries from this date/time
+                </div>
+                Start Date
+              </label>
+              <input
+                type="datetime-local"
+                class="filter-input"
+                id="dateFromFilter"
+              />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Filter queries until this date/time
+                </div>
+                End Date
+              </label>
+              <input
+                type="datetime-local"
+                class="filter-input"
+                id="dateToFilter"
+              />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Sort queries (descending)
+                </div>
+                Sort by
+              </label>
+              <select class="filter-input" id="sortFilter">
+                <option value="query_time">Query Time</option>
+                <option value="lock_time">Lock Time</option>
+                <option value="rows_examined">Rows Examined</option>
+                <option value="timestamp">Date/Time</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Minimum query execution time (ms)
+                </div>
+                Min Time (ms)
+              </label>
+              <input
+                type="number"
+                class="filter-input"
+                id="minTimeFilter"
+                placeholder="0"
+                min="0"
+                step="0.1"
+              />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Maximum query execution time (ms)
+                </div>
+                Max Time (ms)
+              </label>
+              <input
+                type="number"
+                class="filter-input"
+                id="maxTimeFilter"
+                placeholder="Infinity"
+                min="0"
+                step="0.1"
+              />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Minimum lock time (ms) - wait time for table locks
+                </div>
+                Min Lock Time (ms)
+              </label>
+              <input
+                type="number"
+                class="filter-input"
+                id="minLockTimeFilter"
+                placeholder="0"
+                min="0"
+                step="0.1"
+              />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Minimum rows examined/returned ratio (high values = missing indexes)
+                </div>
+                Rows Divergence (ratio)
+              </label>
+              <input
+                type="number"
+                class="filter-input"
+                id="rowsRatioFilter"
+                placeholder="Ex: 10"
+                min="1"
+                step="1"
+              />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Show only queries with efficiency issues
+                </div>
+                Efficiency Problem
+              </label>
+              <select class="filter-input" id="indexIssueFilter">
+                <option value="">All</option>
+                <option value="yes">With problem</option>
+                <option value="no">Without problem</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">
+                <div class="custom-tooltip tooltip-bottom">
+                  Max queries to display
+                </div>
+                Show
+              </label>
+              <select class="filter-input" id="limitFilter">
+                <option value="50">50 queries</option>
+                <option value="100" selected>100 queries</option>
+                <option value="500">500 queries</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="filter-actions">
+            <div class="filter-summary" id="filterSummary"></div>
+            <div class="filter-buttons">
+              <button class="filter-btn btn-filter" onclick="clearAllFilters()">
+                Clear Filters
+              </button>
+              <button
+                class="filter-btn btn-filter btn-filter-primary"
+                onclick="setQuickFilters('today')"
+              >
+                Today
+              </button>
+              <button
+                class="filter-btn btn-filter btn-filter-danger"
+                onclick="setQuickFilters('critical')"
+              >
+                Critical
+              </button>
+              <button
+                class="filter-btn btn-filter btn-filter-dark"
+                onclick="setQuickFilters('index_issues')"
+              >
+                Inefficient
+              </button>
+              <button
+                class="filter-btn btn-filter btn-filter-warning"
+                onclick="setQuickFilters('high_lock')"
+              >
+                High Lock
+              </button>
+            </div>
+          </div>
+
+          <div id="queriesList"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      made with
+      <svg
+        class="heart-icon"
+        viewBox="0 0 24 24"
+        fill="#e53e3e"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+        />
+      </svg>
+      by
+      <a
+        href="https://davydmaker.com.br/"
+        target="_blank"
+        rel="noopener noreferrer"
+        >dvd</a
+      >
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
